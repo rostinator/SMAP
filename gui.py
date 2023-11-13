@@ -8,11 +8,16 @@ customtkinter.set_default_color_theme("dark-blue")  # Themes: "blue" (standard),
 
 
 class App(customtkinter.CTk):
+
+    show_more_button_text = "Show more ..."
+
     def __init__(self):
         super().__init__()
 
         self.news_summarizer = sum.NewsSummarizer()
         self.scrollable_frame_buttons = []
+        self.articles_scrollable_frame_components = []
+        self.actual_articles = []
         self.selected_page_index = -1
 
         # configure window
@@ -51,39 +56,8 @@ class App(customtkinter.CTk):
         self.articles_scrollable_frame.grid(row=0, column=1, sticky="nsew")
         self.articles_scrollable_frame.grid_columnconfigure(0, weight=1)
 
-        self.articles_scrollable_frame_components = []
+        self.create_articles_frames(url=None)
 
-        for article in self.news_summarizer.parse_articles_from_url("https://www.novinky.cz"):
-            article_frame = customtkinter.CTkFrame(master=self.articles_scrollable_frame)
-            article_frame.grid(row=len(self.articles_scrollable_frame_components), column=0, padx=(0, 10),
-                               pady=(10, 10), sticky="nsew")
-            article_frame.grid_columnconfigure(0, weight=0)
-
-            article_header_frame = customtkinter.CTkFrame(master=article_frame, fg_color="transparent")
-            article_header_frame.grid(row=0, column=0, padx=(20, 0), pady=(10, 0), sticky="nsew")
-
-            article_title_label = customtkinter.CTkLabel(master=article_header_frame, text=f"{article.title}",
-                                                         justify="left", wraplength=800,
-                                                         font=customtkinter.CTkFont(size=25, weight="bold"))
-            article_title_label.grid(row=0, column=0, sticky="nsew")
-
-            article_content_label = customtkinter.CTkLabel(master=article_frame, justify="left", wraplength=770, padx=0,
-                                                           anchor="w",
-                                                           text=f"{article.description}",
-                                                           font=customtkinter.CTkFont(size=16))
-            article_content_label.grid(row=1, column=0, padx=(20, 20), pady=(20, 10), sticky="nsew")
-
-            article_text_frame = customtkinter.CTkFrame(master=article_frame, fg_color="transparent")
-            article_text_frame.grid(row=2, column=0, padx=(0, 10), pady=(10, 10), sticky="nsew")
-
-            for i in range(len(article.text) - 1):
-                article_text_label = customtkinter.CTkLabel(master=article_text_frame, justify="left", wraplength=800,
-                                                            anchor="w", padx=0,
-                                                            text=f"{article.text[i + 1]}",
-                                                            font=customtkinter.CTkFont(size=14))
-                article_text_label.grid(row=i, column=0, padx=(20, 20), pady=(0, 10), sticky="nsew")
-
-            self.articles_scrollable_frame_components.append(article_frame)
 
     def home_button_event(self):
         self.unselect_page_button()
@@ -104,6 +78,7 @@ class App(customtkinter.CTk):
 
             self.selected_page_index = index
             newly_selected_button.configure(fg_color='#2554C7', hover_color='#2554C7')
+            self.create_articles_frames(newly_selected_button.cget("text"))
 
     def add_page_button_event(self):
         dialog = customtkinter.CTkInputDialog(text="New page (Domain name):")
@@ -113,6 +88,14 @@ class App(customtkinter.CTk):
             self.scrollable_frame_buttons = []
             self.create_pages_buttons()
 
+    def show_more_button_event(self, index, article_text_frame, button):
+        if (button.cget("text") == self.show_more_button_text):
+            article_text_frame.grid(row=2, column=0, padx=(0, 10), pady=(10, 10), sticky="nsew")
+            button.configure(text="Show less")
+        else:
+            article_text_frame.grid_remove()
+            button.configure(text=self.show_more_button_text)
+
     def create_pages_buttons(self):
         for page in self.news_summarizer.get_pages():
             index = len(self.scrollable_frame_buttons)
@@ -120,6 +103,52 @@ class App(customtkinter.CTk):
                                              command=lambda i=index: self.select_page_button_event(i))
             button.grid(row=index, column=0, padx=5, pady=(5, 0), sticky="nsew")
             self.scrollable_frame_buttons.append(button)
+
+    def create_articles_frames(self, url):
+        self.articles_scrollable_frame_components = []
+        for child in list(self.articles_scrollable_frame.children.values()):
+            child.destroy()
+
+        self.actual_articles = self.news_summarizer.parse_articles_from_url("novinky.cz" if url is None else url)
+        for article in  self.actual_articles:
+            index = len(self.articles_scrollable_frame_components)
+            article_frame = customtkinter.CTkFrame(master=self.articles_scrollable_frame)
+            article_frame.grid(row=index, column=0, padx=(0, 10),
+                               pady=(10, 10), sticky="nsew")
+            article_frame.grid_columnconfigure(0, weight=0)
+
+            article_header_frame = customtkinter.CTkFrame(master=article_frame, fg_color="transparent")
+            article_header_frame.grid(row=0, column=0, padx=(20, 0), pady=(10, 0), sticky="nsew")
+
+            article_title_label = customtkinter.CTkLabel(master=article_header_frame, text=f"{article.title}",
+                                                         justify="left", wraplength=800,
+                                                         font=customtkinter.CTkFont(size=25, weight="bold"))
+            article_title_label.grid(row=0, column=0, sticky="nsew")
+
+            article_content_label = customtkinter.CTkLabel(master=article_frame, justify="left", wraplength=770, padx=0,
+                                                           anchor="w",
+                                                           text=f"{article.description}",
+                                                           font=customtkinter.CTkFont(size=16))
+            article_content_label.grid(row=1, column=0, padx=(20, 20), pady=(20, 10), sticky="nsew")
+
+            article_text_frame = customtkinter.CTkFrame(master=article_frame, fg_color="transparent")
+            # article_text_frame.grid(row=2, column=0, padx=(0, 10), pady=(10, 10), sticky="nsew")
+
+            for i in range(len(article.text) - 1):
+                article_text_label = customtkinter.CTkLabel(master=article_text_frame, justify="left", wraplength=800,
+                                                            anchor="w", padx=0,
+                                                            text=f"{article.text[i + 1]}",
+                                                            font=customtkinter.CTkFont(size=14))
+                article_text_label.grid(row=i, column=0, padx=(20, 20), pady=(0, 10), sticky="nsew")
+
+
+            show_more_button = customtkinter.CTkButton(master=article_frame, text=self.show_more_button_text)
+            show_more_button.configure(command=lambda i=index, atf=article_text_frame, btn=show_more_button:
+                self.show_more_button_event(i, atf, btn))
+
+            show_more_button.grid(row=3, column=0, pady=(5, 10))
+
+            self.articles_scrollable_frame_components.append(article_frame)
 
 
 if __name__ == "__main__":

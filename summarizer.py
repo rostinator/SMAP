@@ -92,8 +92,8 @@ class NewsSummarizer:
             article_segments = []
             page_p_elements = soup.find_all("p")
             for page_p_element in page_p_elements:
-                if page_p_element.text is not None and len(page_p_element.text.split()) > 10:
-                    article_segments.append(page_p_element.text)
+                if page_p_element.text is not None and len(page_p_element.text.split()) > 25:
+                    article_segments.append(page_p_element.text.replace("\n", "").replace("\r", ""))
 
             page_articles.append(Article(title=title, url=article_link, description=description, text=article_segments))
 
