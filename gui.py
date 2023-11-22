@@ -155,8 +155,9 @@ class App(customtkinter.CTk):
 
             grid_index = 0
             if len(article.authors) > 0:
+                text = ", ".join(str(x) for x in article.authors)
                 author_label = customtkinter.CTkLabel(master=article_text_frame, anchor="w", justify="left",
-                                                      text=f"{", ".join(str(x) for x in article.authors)}",
+                                                      text=f"{text}",
                                                       font=customtkinter.CTkFont(size=14, weight="bold"))
                 author_label.grid(row=grid_index, padx=(20, 0), column=0, sticky="nsew")
                 grid_index += 1
@@ -169,8 +170,9 @@ class App(customtkinter.CTk):
                 grid_index += 1
 
             if len(article.keywords) > 0:
+                text = ", ".join(str(x) for x in article.keywords)
                 keywords = customtkinter.CTkLabel(master=article_text_frame, anchor="w", justify="left",
-                                                  text=f"{", ".join(str(x) for x in article.keywords)}",
+                                                  text=f"{text}",
                                                   font=customtkinter.CTkFont(size=14, slant="italic"))
                 keywords.grid(row=grid_index, padx=(20, 0), column=0, sticky="nsew")
                 grid_index += 1

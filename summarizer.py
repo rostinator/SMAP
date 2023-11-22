@@ -69,9 +69,7 @@ class NewsSummarizer:
         page_a_elements = soup.find_all("a", href=True)
         articles_links = []
         for page_a_element in page_a_elements:
-            if ((main_page_url in page_a_element['href'] or (page_a_element['href'].startswith("/") and len(page_a_element['href'])) > 30)
-                    and len(page_a_element.text) > 0
-                    and len(page_a_element.text.split()) > 4):
+            if self.is_link_to_same_domain(main_page_url, page_a_element) and self.is_link_to_article(page_a_element):
                 articles_links.append(page_a_element['href'])
                 if len(articles_links) >= max_articles_size:
                     break
@@ -80,7 +78,7 @@ class NewsSummarizer:
         page_articles = []
         for article_link in articles_links:
             if not article_link.startswith("http"):
-                article_link = main_page_url + article_link
+                article_link = final_main_page_url + article_link
             soup = self.download_and_parse_page(article_link)
             page_meta_elements = soup.find_all("meta")
 
@@ -96,7 +94,7 @@ class NewsSummarizer:
 
                 if property == "og:title":
                     title = content
-                elif property == "og:description":
+                elif property == "og:description" or property == "description" or name == "description":
                     description = content
                 elif name == "keywords":
                     keywords = content.split(', ')
@@ -112,7 +110,7 @@ class NewsSummarizer:
                     break
 
             if site_name is None:
-                site_from_url = article_link.removeprefix("https://www.")
+                site_from_url = article_link[article_link.startswith("https://www.") and len("https://www."):]
                 site_name = site_from_url[:site_from_url.find("/")]
 
             # Zpracovani obsahu clanku
@@ -145,3 +143,16 @@ class NewsSummarizer:
     @staticmethod
     def remove_new_lines(text):
         return text.replace("\n", "").replace("\r", "").replace("\t", "").strip()
+
+    @staticmethod
+    def is_link_to_article(page_a_element):
+        return (len(page_a_element['href']) > 30
+                and len(page_a_element.text) > 0
+                and len(page_a_element.text.split()) > 4
+                and "|" not in page_a_element.text
+                and "/" not in page_a_element.text)
+
+    @staticmethod
+    def is_link_to_same_domain(main_page_url, page_a_element):
+        return main_page_url in page_a_element['href'] or (
+                page_a_element['href'].startswith("/") and len(page_a_element['href']) > 30)
