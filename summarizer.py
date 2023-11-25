@@ -1,5 +1,8 @@
+import csv
 import pickle
 import os
+import time
+import datetime
 import requests
 import bs4
 
@@ -10,7 +13,7 @@ class Page:
 
 
 class Article:
-    def __init__(self, title, url, description, text, keywords, site_name, authors):
+    def __init__(self, title, url, description, text, keywords, site_name, authors, language):
         self.title = title
         self.url = url
         self.description = description
@@ -18,7 +21,10 @@ class Article:
         self.keywords = keywords
         self.site_name = site_name
         self.authors = authors
+        self.language = language
 
+    def __iter__(self):
+        return iter([self.title, self.url, self.description, self.text, self.keywords, self.site_name, self.authors,self.language])
 
 class NewsSummarizer:
     pages_filename = "pages_data.plk"
@@ -60,71 +66,93 @@ class NewsSummarizer:
             self.pages.pop(remove_page_index)
             self.save_pages()
 
+    # TODO add button to GUI
+    def save_articles_to_csv(self, page_name, articles):
+        filename = page_name + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
+        if not os.path.isfile(filename):
+            open(filename, 'x')
+
+        with open(filename, "w") as stream:
+            writer = csv.writer(stream, delimiter=";")
+            writer.writerow(["title", "url", "description", "content", "keywords", "site_name", "authors", "language"])
+            writer.writerows(articles)
+
     def parse_articles_from_url(self, main_page_url, max_articles_size=10):
+        start = time.time()
         final_main_page_url = "https://" + main_page_url if not main_page_url.startswith("https://") else main_page_url
 
         soup = self.download_and_parse_page(final_main_page_url)
 
         # Vyhledani a filtrace odkazu na aktualni clanky
         page_a_elements = soup.find_all("a", href=True)
-        articles_links = []
+        articles_links = set()
         for page_a_element in page_a_elements:
             if self.is_link_to_same_domain(main_page_url, page_a_element) and self.is_link_to_article(page_a_element):
-                articles_links.append(page_a_element['href'])
+                articles_links.add(page_a_element['href'])
                 if len(articles_links) >= max_articles_size:
                     break
 
-        # parsovani informaci o clanku
+        # parsovani potrebnych informaci o clanku z html
         page_articles = []
         for article_link in articles_links:
-            if not article_link.startswith("http"):
-                article_link = final_main_page_url + article_link
-            soup = self.download_and_parse_page(article_link)
-            page_meta_elements = soup.find_all("meta")
+            page_articles.append(self.parse_article(article_link, final_main_page_url))
 
-            title = None
-            description = None
-            keywords = []
-            site_name = None
-            authors = []
-            for page_meta_element in page_meta_elements:
-                property = page_meta_element['property'] if page_meta_element.has_attr('property') else None
-                content = page_meta_element['content'] if page_meta_element.has_attr('content') else None
-                name = page_meta_element['name'] if page_meta_element.has_attr('name') else None
 
-                if property == "og:title":
-                    title = content
-                elif property == "og:description" or property == "description" or name == "description":
-                    description = content
-                elif name == "keywords":
-                    keywords = content.split(', ')
-                elif property == "og:site_name":
-                    site_name = content
-                elif name == "author":
-                    authors = content.split(', ')
-
-            page_h1_elements = soup.find_all("h1", limit=10)
-            for page_h1_element in page_h1_elements:
-                if len(page_h1_element.text.split()) > 4:
-                    title = self.remove_new_lines(page_h1_element.text)
-                    break
-
-            if site_name is None:
-                site_from_url = article_link[article_link.startswith("https://www.") and len("https://www."):]
-                site_name = site_from_url[:site_from_url.find("/")]
-
-            # Zpracovani obsahu clanku
-            article_segments = []
-            page_p_elements = soup.find_all("p")
-            for page_p_element in page_p_elements:
-                if (page_p_element.text is not None and len(page_p_element.text.split()) > 25
-                        and "|" not in page_p_element.text):
-                    article_segments.append(self.remove_new_lines(page_p_element.text))
-
-            page_articles.append(Article(title=title, url=article_link, description=description, text=article_segments,
-                                         keywords=keywords, site_name=site_name, authors=authors))
-
+        end = time.time()
+        print('Execution Time: {}'.format(end - start))
         return page_articles
+
+    def parse_article(self, url, main_page_url):
+        if not url.startswith("http"):
+            url = main_page_url + url
+        soup = self.download_and_parse_page(url)
+        page_meta_elements = soup.find_all("meta")
+        page_html_element = soup.find("html", lang=True)
+
+        title = None
+        description = None
+        keywords = []
+        site_name = None
+        authors = []
+        language = None
+        if page_html_element is not None:
+            language = page_html_element['lang']
+        for page_meta_element in page_meta_elements:
+            property = page_meta_element['property'] if page_meta_element.has_attr('property') else None
+            content = page_meta_element['content'] if page_meta_element.has_attr('content') else None
+            name = page_meta_element['name'] if page_meta_element.has_attr('name') else None
+
+            if property == "og:title":
+                title = content
+            elif property == "og:description" or property == "description" or name == "description":
+                description = content
+            elif name == "keywords":
+                keywords = content.split(', ')
+            elif property == "og:site_name":
+                site_name = content
+            elif name == "author":
+                authors = content.split(', ')
+
+        page_h1_elements = soup.find_all("h1", limit=10)
+        for page_h1_element in page_h1_elements:
+            if len(page_h1_element.text.split()) > 4:
+                title = self.remove_new_lines(page_h1_element.text)
+                break
+
+        if site_name is None:
+            site_from_url = url[url.startswith("https://www.") and len("https://www."):]
+            site_name = site_from_url[:site_from_url.find("/")]
+
+        # Zpracovani obsahu clanku
+        article_segments = []
+        page_p_elements = soup.find_all("p")
+        for page_p_element in page_p_elements:
+            if (page_p_element.text is not None and len(page_p_element.text.split()) > 25
+                    and "|" not in page_p_element.text):
+                article_segments.append(self.remove_new_lines(page_p_element.text))
+
+        return Article(title=title, url=url, description=description, text=article_segments,
+                                keywords=keywords, site_name=site_name, authors=authors, language=language)
 
     def download_and_parse_page(self, url):
         response = requests.get(url)
