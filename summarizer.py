@@ -5,6 +5,13 @@ import time
 import datetime
 import requests
 import bs4
+from nltk.tokenize import sent_tokenize
+from nltk.corpus import stopwords
+from nltk.corpus.reader.wordlist import NonbreakingPrefixesCorpusReader
+import nltk
+import shutil
+import re
+import heapq
 
 
 class Page:
@@ -13,24 +20,33 @@ class Page:
 
 
 class Article:
-    def __init__(self, title, url, description, text, keywords, site_name, authors, language):
+    def __init__(self, title, url, description, text, summary, keywords, site_name, authors, language):
         self.title = title
         self.url = url
         self.description = description
         self.text = text
+        self.summary = summary
         self.keywords = keywords
         self.site_name = site_name
         self.authors = authors
         self.language = language
 
     def __iter__(self):
-        return iter([self.title, self.url, self.description, self.text, self.keywords, self.site_name, self.authors,self.language])
+        return iter([self.title, self.url, self.description, self.text, self.keywords, self.site_name, self.authors,
+                     self.language])
+
 
 class NewsSummarizer:
     pages_filename = "pages_data.plk"
 
     def __init__(self):
         self.pages = []
+        try:
+            filename = os.getenv('APPDATA') + "\\nltk_data\\corpora\\stopwords\\czech"
+            if not os.path.isfile(filename):
+                shutil.copy2('stopwords-cs.txt', filename)
+        except:
+            print("Failed to copy czech stopwords into nltk_data folder")
 
     def get_pages(self):
         if not self.pages:
@@ -66,17 +82,20 @@ class NewsSummarizer:
             self.pages.pop(remove_page_index)
             self.save_pages()
 
-    # TODO add button to GUI
-    def save_articles_to_csv(self, page_name, articles):
+    def save_articles_to_csv(self, page_name):
+        articles = self.parse_articles_from_url(page_name, -1)
         filename = page_name + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
         if not os.path.isfile(filename):
             open(filename, 'x')
 
-        with open(filename, "w") as stream:
+        with open(filename, "w", encoding="utf-8") as stream:
             writer = csv.writer(stream, delimiter=";")
             writer.writerow(["title", "url", "description", "content", "keywords", "site_name", "authors", "language"])
             writer.writerows(articles)
 
+    #
+    # PAGE SCRAPPING
+    #
     def parse_articles_from_url(self, main_page_url, max_articles_size=10):
         start = time.time()
         final_main_page_url = "https://" + main_page_url if not main_page_url.startswith("https://") else main_page_url
@@ -89,14 +108,13 @@ class NewsSummarizer:
         for page_a_element in page_a_elements:
             if self.is_link_to_same_domain(main_page_url, page_a_element) and self.is_link_to_article(page_a_element):
                 articles_links.add(page_a_element['href'])
-                if len(articles_links) >= max_articles_size:
+                if 0 < max_articles_size <= len(articles_links):
                     break
 
         # parsovani potrebnych informaci o clanku z html
         page_articles = []
         for article_link in articles_links:
             page_articles.append(self.parse_article(article_link, final_main_page_url))
-
 
         end = time.time()
         print('Execution Time: {}'.format(end - start))
@@ -151,26 +169,72 @@ class NewsSummarizer:
                     and "|" not in page_p_element.text):
                 article_segments.append(self.remove_new_lines(page_p_element.text))
 
-        return Article(title=title, url=url, description=description, text=article_segments,
-                                keywords=keywords, site_name=site_name, authors=authors, language=language)
+        text_summary = self.summary_article_text(article_segments, language)
+
+        return Article(title=title, url=url, description=description, text=article_segments, summary=text_summary,
+                       keywords=keywords, site_name=site_name, authors=authors, language=language)
 
     def download_and_parse_page(self, url):
         response = requests.get(url)
         html = response.text
-        response.encoding = self.parse_charset_from_html(html)
+        response.encoding = 'utf-8'
 
         return bs4.BeautifulSoup(html, features="html.parser")
 
-    @staticmethod
-    def parse_charset_from_html(html):
-        charset_tag = "<meta charset=\""
-        charset_tag_index = html.lower().find(charset_tag)
-        charset = html[charset_tag_index + len(charset_tag):charset_tag_index + len(charset_tag) + 50]
-        return charset[:charset.find("\"")]
+    #
+    # TEXT SUMMARIZATION
+    #
+    def summary_article_text(self, article_segments, language_code):
+        if len(article_segments) < 1:
+            return None
+
+        language = None
+        if language_code != None:
+            for lang, code in NonbreakingPrefixesCorpusReader.available_langs.items():
+                if code in language_code:
+                    language = lang
+                    break
+        if language == None:
+            language = 'english'
+
+        article_text = " ".join(str(x) for x in article_segments)
+        article_filtered_text = ''.join(c for c in article_text if c.isalpha() or c.isspace())
+        article_filtered_text = re.sub(r'\s+', ' ', article_filtered_text)
+
+        sentences = sent_tokenize(article_text, language=language)
+        language_stopwords = stopwords.words(language)
+
+        word_frequencies = {}
+        for word in nltk.word_tokenize(article_filtered_text, language=language):
+            word = word.lower()
+            if word not in language_stopwords:
+                if word not in word_frequencies.keys():
+                    word_frequencies[word] = 1
+                else:
+                    word_frequencies[word] += 1
+
+        max_count = max(word_frequencies.values())
+        for word in word_frequencies.keys():
+            word_frequencies[word] = (word_frequencies[word] / max_count)
+
+        sentences_score = {}
+        for sentence in sentences:
+            for word in nltk.word_tokenize(sentence.lower(), language='czech'):
+                if word in word_frequencies.keys():
+                    if len(sentence.split(' ')) < 30:
+                        if sentence not in sentences_score.keys():
+                            sentences_score[sentence] = word_frequencies[word]
+                        else:
+                            sentences_score[sentence] += word_frequencies[word]
+
+        final_summary_sentences = heapq.nlargest(7, sentences_score, key=sentences_score.get)
+        final_summary = ' '.join(final_summary_sentences)
+
+        return final_summary
 
     @staticmethod
     def remove_new_lines(text):
-        return text.replace("\n", "").replace("\r", "").replace("\t", "").strip()
+        return text.replace("\n", "").replace("\r", "").replace("\t", "").replace(u'\xa0', ' ').strip()
 
     @staticmethod
     def is_link_to_article(page_a_element):
