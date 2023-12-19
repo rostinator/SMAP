@@ -86,17 +86,20 @@ class NewsSummarizer:
         articles = self.parse_articles_from_url(page_name, -1)
         filename = page_name + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
         if not os.path.isfile(filename):
-            open(filename, 'x')
+            file = open(filename, 'x')
+            file.close()
 
         with open(filename, "w", encoding="utf-8") as stream:
             writer = csv.writer(stream, delimiter=";")
             writer.writerow(["title", "url", "description", "content", "keywords", "site_name", "authors", "language"])
             writer.writerows(articles)
 
+        return articles
+
     #
     # PAGE SCRAPPING
     #
-    def parse_articles_from_url(self, main_page_url, max_articles_size=10):
+    def parse_articles_from_url(self, main_page_url, max_articles_size=15):
         start = time.time()
         final_main_page_url = "https://" + main_page_url if not main_page_url.startswith("https://") else main_page_url
 

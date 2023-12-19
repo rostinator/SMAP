@@ -1,5 +1,3 @@
-import tkinter as tk
-import tkinter.messagebox
 import customtkinter
 import summarizer as sum
 
@@ -71,12 +69,12 @@ class App(customtkinter.CTk):
         self.articles_scrollable_frame.grid(row=1, column=1, sticky="nsew")
         self.articles_scrollable_frame.grid_columnconfigure(0, weight=1)
 
-        self.create_articles_frames(url=None)
+        pages = self.news_summarizer.get_pages()
+        self.create_articles_frames(url=(pages[0].url if len(pages) > 0 else None))
 
     def home_button_event(self):
         self.unselect_page_button()
         self.main_view_title.configure(text="News")
-        print("TODO")
 
     def unselect_page_button(self):
         if self.selected_page_index >= 0:
@@ -143,7 +141,7 @@ class App(customtkinter.CTk):
         for child in list(self.articles_scrollable_frame.children.values()):
             child.destroy()
 
-        self.actual_articles = self.news_summarizer.parse_articles_from_url("novinky.cz" if url is None else url)
+        self.actual_articles = self.news_summarizer.parse_articles_from_url(url)
         for article in self.actual_articles:
             index = len(self.articles_scrollable_frame_components)
             article_frame = customtkinter.CTkFrame(master=self.articles_scrollable_frame)
